@@ -1,0 +1,162 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+enum Role {
+  LAWYER
+  LAW_STUDENT
+  JUDGE
+  LEGAL_ASSISTANT
+  PUBLIC
+}
+
+enum PlanTier {
+  PUBLIC
+  STUDENT
+  ASSISTANT
+  LAWYER
+  JUDGE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // For Credentials provider
+  role          Role      @default(PUBLIC)
+  plan          PlanTier  @default(PUBLIC)
+  accounts      Account[]
+  sessions      Session[]
+  drafts        Draft[]
+  tickets       Ticket[]
+  auditLogs     AuditLog[]
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+ 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+ 
+  @@id([identifier, token])
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  title     String
+  language  String   @default("en") // en, ar, ku
+  filePath  String
+  fileType  String   // PDF, TXT
+  status    String   // PENDING, PROCESSING, INDEXED, FAILED
+  pageCount Int      @default(0)
+  chunks    Chunk[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Chunk {
+  id         String   @id @default(cuid())
+  content    String
+  pageNumber Int
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  // Unsupported("vector(768)") is the typical way to define vector columns in raw SQL, 
+  // but for Prisma + extensions, we often use `metric_vector Unsupported("vector")?` or similar.
+  // We will default to a Float[] for now if not using raw queries, or setup raw SQL migration.
+  embedding  Unsupported("vector")?
+
+  createdAt DateTime @default(now())
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   // Contract, Pleading, Memo
+  content     String   // The text structure or JSON schema for fields
+  description String?
+  drafts      Draft[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Draft {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  templateId String?
+  template   Template? @relation(fields: [templateId], references: [id])
+  title      String
+  content    String   @db.Text
+  status     String   // DRAFT, FINAL
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ticket {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  description String
+  status      String   @default("OPEN")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  action       String   // "CHAT_QUERY", "DRAFT_GENERATED"
+  query        String?  // Redacted PII
+  latencyMs    Int?
+  citedSources Json?    // Array of sources
+  
+  createdAt DateTime @default(now())
+}
